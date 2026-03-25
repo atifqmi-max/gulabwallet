@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gulab Wallet | Register & Login</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1e3c2c 0%, #2a4a35 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255,255,255,0.95);
+            border-radius: 28px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 420px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .header {
+            background: #f4b942;
+            padding: 24px;
+            text-align: center;
+            color: #1e3c2c;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            letter-spacing: 1px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            margin-top: 6px;
+        }
+
+        .tabs {
+            display: flex;
+            background: #f0f0f0;
+        }
+
+        .tab-btn {
+            flex: 1;
+            background: none;
+            border: none;
+            padding: 14px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            color: #555;
+        }
+
+        .tab-btn.active {
+            background: white;
+            color: #f4b942;
+            border-bottom: 3px solid #f4b942;
+        }
+
+        .form-panel {
+            padding: 32px 24px;
+            display: none;
+        }
+
+        .form-panel.active {
+            display: block;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px 16px;
+            margin: 12px 0;
+            border: 1px solid #ddd;
+            border-radius: 40px;
+            font-size: 16px;
+            outline: none;
+            transition: 0.2s;
+        }
+
+        input:focus {
+            border-color: #f4b942;
+            box-shadow: 0 0 0 3px rgba(244,185,66,0.2);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #f4b942;
+            border: none;
+            border-radius: 40px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #1e3c2c;
+            cursor: pointer;
+            margin-top: 16px;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            background: #e0a82e;
+            transform: scale(0.98);
+        }
+
+        .message {
+            margin-top: 16px;
+            text-align: center;
+            font-size: 14px;
+            padding: 8px;
+            border-radius: 40px;
+            background: #f8f9fa;
+        }
+
+        .error {
+            color: #c0392b;
+            background: #fce4e4;
+        }
+
+        .success {
+            color: #2e7d32;
+            background: #e0f2e0;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>🌸 Gulab Wallet</h1>
+        <p>Your digital rose garden</p>
+    </div>
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="login">Login</button>
+        <button class="tab-btn" data-tab="register">Register</button>
+    </div>
+
+    <div id="login-panel" class="form-panel active">
+        <form id="login-form">
+            <input type="text" id="login-username" placeholder="Username" required>
+            <input type="password" id="login-password" placeholder="Password" required>
+            <button type="submit">Login to Wallet</button>
+            <div id="login-message" class="message"></div>
+        </form>
+    </div>
+
+    <div id="register-panel" class="form-panel">
+        <form id="register-form">
+            <input type="text" id="reg-username" placeholder="Choose Username" required>
+            <input type="password" id="reg-password" placeholder="Password" required>
+            <button type="submit">Create Account</button>
+            <div id="reg-message" class="message"></div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // ---------- localStorage DB ----------
+    function getUsers() {
+        let users = localStorage.getItem("gulab_users");
+        if (!users) {
+            // seed admin? no admin yet, but we can create first admin via admin panel later
+            return [];
+        }
+        return JSON.parse(users);
+    }
+
+    function saveUsers(users) {
+        localStorage.setItem("gulab_users", JSON.stringify(users));
+    }
+
+    // Helper: find user by username
+    function findUser(username) {
+        const users = getUsers();
+        return users.find(u => u.username === username);
+    }
+
+    // Register logic
+    document.getElementById("register-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const username = document.getElementById("reg-username").value.trim();
+        const password = document.getElementById("reg-password").value.trim();
+        const msgDiv = document.getElementById("reg-message");
+
+        if (!username || !password) {
+            msgDiv.innerText = "❌ All fields required";
+            msgDiv.className = "message error";
+            return;
+        }
+
+        let users = getUsers();
+        if (users.find(u => u.username === username)) {
+            msgDiv.innerText = "❌ Username already exists!";
+            msgDiv.className = "message error";
+            return;
+        }
+
+        // create new user with initial balance 0
+        const newUser = {
+            username: username,
+            password: password,
+            balance: 0,
+            transactions: [],
+            walletAddress: ""
+        };
+        users.push(newUser);
+        saveUsers(users);
+        msgDiv.innerText = "✅ Account created! You can now login.";
+        msgDiv.className = "message success";
+        document.getElementById("reg-username").value = "";
+        document.getElementById("reg-password").value = "";
+        // switch to login tab after 1 sec
+        setTimeout(() => {
+            document.querySelector(".tab-btn[data-tab='login']").click();
+        }, 1200);
+    });
+
+    // Login logic
+    document.getElementById("login-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const username = document.getElementById("login-username").value.trim();
+        const password = document.getElementById("login-password").value.trim();
+        const msgDiv = document.getElementById("login-message");
+
+        const users = getUsers();
+        const user = users.find(u => u.username === username && u.password === password);
+        if (!user) {
+            msgDiv.innerText = "❌ Invalid credentials";
+            msgDiv.className = "message error";
+            return;
+        }
+
+        // store current logged in user in sessionStorage
+        sessionStorage.setItem("gulab_logged_user", JSON.stringify({ username: user.username, isAdmin: user.isAdmin || false }));
+        // redirect to hp.html
+        window.location.href = "hp.html";
+    });
+
+    // tab switching
+    const tabBtns = document.querySelectorAll(".tab-btn");
+    const loginPanel = document.getElementById("login-panel");
+    const regPanel = document.getElementById("register-panel");
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            const tabId = btn.getAttribute("data-tab");
+            tabBtns.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+
+            if (tabId === "login") {
+                loginPanel.classList.add("active");
+                regPanel.classList.remove("active");
+            } else {
+                regPanel.classList.add("active");
+                loginPanel.classList.remove("active");
+            }
+        });
+    });
+</script>
+</body>
+</html>
