@@ -43,6 +43,8 @@
             text-decoration: none;
             font-weight: bold;
             font-size: 14px;
+            cursor: pointer;
+            border: none;
         }
         .balance-card {
             background: linear-gradient(145deg, #f9e0a0, #f4b942);
@@ -176,19 +178,27 @@
             border-radius: 30px;
             text-decoration: none;
             font-size: 14px;
+            display: inline-block;
         }
         .deposit-note {
             font-size: 12px;
             color: #666;
             margin-top: 10px;
         }
+        .username-display {
+            font-size: 14px;
+            opacity: 0.9;
+        }
     </style>
 </head>
 <body>
 <div class="dashboard">
     <div class="top-bar">
-        <h2>🌸 Gulab Wallet</h2>
-        <a href="index.html" class="logout-btn" id="logoutBtn">Logout</a>
+        <div>
+            <h2>🌸 Gulab Wallet</h2>
+            <div class="username-display" id="usernameDisplay"></div>
+        </div>
+        <button class="logout-btn" id="logoutBtn">Logout</button>
     </div>
     <div class="balance-card">
         <h3>Your Balance</h3>
@@ -226,7 +236,7 @@
     </div>
 </div>
 
-<!-- Withdraw Modal (wallet address + confirmation) -->
+<!-- Withdraw Modal -->
 <div id="withdrawModal" class="modal">
     <div class="modal-card">
         <h3>Withdraw Funds</h3>
@@ -249,13 +259,25 @@
 </div>
 
 <script>
-    // ----- helpers -----
+    // Database functions
     function getUsers() {
-        return JSON.parse(localStorage.getItem("gulab_users") || "[]");
+        const users = localStorage.getItem("gulab_users");
+        if (!users) {
+            return [];
+        }
+        try {
+            return JSON.parse(users);
+        } catch (e) {
+            console.error("Error parsing users:", e);
+            return [];
+        }
     }
+    
     function saveUsers(users) {
         localStorage.setItem("gulab_users", JSON.stringify(users));
+        console.log("Users saved to database");
     }
+    
     let currentUser = null;
 
     function loadCurrentUser() {
@@ -264,21 +286,39 @@
             window.location.href = "index.html";
             return null;
         }
-        const parsed = JSON.parse(stored);
-        const users = getUsers();
-        const user = users.find(u => u.username === parsed.username);
-        if (!user) {
-            sessionStorage.removeItem("gulab_logged_user");
+        
+        try {
+            const parsed = JSON.parse(stored);
+            const users = getUsers();
+            const user = users.find(u => u.username === parsed.username);
+            
+            if (!user) {
+                sessionStorage.removeItem("gulab_logged_user");
+                window.location.href = "index.html";
+                return null;
+            }
+            
+            // Update session storage with latest data
+            sessionStorage.setItem("gulab_logged_user", JSON.stringify({ 
+                username: user.username, 
+                isAdmin: user.isAdmin || false,
+                id: user.id
+            }));
+            
+            return user;
+        } catch (e) {
+            console.error("Error loading user:", e);
             window.location.href = "index.html";
             return null;
         }
-        return user;
     }
 
     function updateUI() {
         if (!currentUser) return;
         document.getElementById("balanceDisplay").innerText = `$${currentUser.balance.toFixed(2)}`;
-        // show admin link if admin
+        document.getElementById("usernameDisplay").innerHTML = `Welcome, ${currentUser.username}`;
+        
+        // Show admin link if admin
         if (currentUser.isAdmin === true) {
             document.getElementById("adminLinkArea").style.display = "block";
         } else {
@@ -309,18 +349,21 @@
             desc: desc,
             amount: amountNumFormatted
         });
-        // keep last 20
+        // Keep last 20
         if (currentUser.transactions.length > 20) currentUser.transactions.shift();
-        saveUsers(getUsers().map(u => u.username === currentUser.username ? currentUser : u));
-        updateUI();
+        persistUser();
     }
 
     function persistUser() {
         const users = getUsers();
         const idx = users.findIndex(u => u.username === currentUser.username);
-        if (idx !== -1) users[idx] = currentUser;
-        saveUsers(users);
-        updateUI();
+        if (idx !== -1) {
+            users[idx] = currentUser;
+            saveUsers(users);
+            updateUI();
+        } else {
+            console.error("User not found in database");
+        }
     }
 
     // Copy address function
@@ -342,96 +385,69 @@
         });
     };
 
-    // Deposit simulation (manual entry removed, now just shows address)
-    // User will deposit externally, admin can manually add balance (or you can add a verification system)
-    // For demo, we add a button in deposit modal to simulate deposit (optional)
-    function addManualDeposit(amount) {
-        if (isNaN(amount) || amount <= 0) return false;
-        currentUser.balance += amount;
-        addTransaction(`Deposit (Manual)`, `+$${amount.toFixed(2)}`);
-        persistUser();
-        return true;
-    }
-
-    // withdraw request (mock payment done)
+    // Withdraw request
     function requestWithdrawal(wallet, amount) {
         if (isNaN(amount) || amount <= 0) return { success: false, msg: "Invalid amount" };
         if (amount > currentUser.balance) return { success: false, msg: "Insufficient balance" };
-        // update wallet address
+        
         currentUser.walletAddress = wallet;
-        // deduct balance (simulate payment processing)
         currentUser.balance -= amount;
         addTransaction(`Withdrawal requested to ${wallet.substring(0,6)}...`, `-$${amount.toFixed(2)}`);
-        persistUser();
+        
         return { success: true, msg: "Payment Done ✅. You Will Receive Payment In 24 Hours" };
     }
 
-    // redeem code logic
+    // Redeem code logic
     function redeemCode(code) {
         const redeemCodes = JSON.parse(localStorage.getItem("gulab_redeem_codes") || "[]");
         const foundIdx = redeemCodes.findIndex(rc => rc.code === code && !rc.used);
+        
         if (foundIdx === -1) return { success: false, msg: "Invalid or already used code." };
+        
         const codeObj = redeemCodes[foundIdx];
         const dollarValue = codeObj.value;
-        // mark as used
+        
+        // Mark as used
         redeemCodes[foundIdx].used = true;
         redeemCodes[foundIdx].redeemedAt = new Date().toLocaleString();
         localStorage.setItem("gulab_redeem_codes", JSON.stringify(redeemCodes));
-        // add balance
+        
+        // Add balance
         currentUser.balance += dollarValue;
         addTransaction(`Redeemed code: ${code}`, `+$${dollarValue.toFixed(2)}`);
-        persistUser();
+        
         return { success: true, msg: `Success! +$${dollarValue.toFixed(2)} added to balance.` };
     }
 
-    // ---- modals handling ----
+    // Modal handling
     function openModal(modalId) {
         document.getElementById(modalId).style.display = "flex";
     }
+    
     function closeModals() {
         document.querySelectorAll('.modal').forEach(m => m.style.display = "none");
-        // clear messages
         document.getElementById("withdrawMsg").innerHTML = "";
         document.getElementById("copyMessage").innerHTML = "";
     }
 
-    // event listeners
+    // Event listeners
     document.getElementById("depositBtn").onclick = () => openModal("depositModal");
     document.getElementById("withdrawBtn").onclick = () => openModal("withdrawModal");
     document.getElementById("redeemBtn").onclick = () => openModal("redeemModal");
-
-    // Optional: Add a manual deposit button inside deposit modal for demo purposes
-    // But to keep clean, we just show address. You can add admin deposit system separately.
-    // If you want members to simulate deposit, uncomment the following:
-    /*
-    // Add a small input in deposit modal
-    const depositModalCard = document.querySelector("#depositModal .modal-card");
-    const simInput = document.createElement("input");
-    simInput.type = "number";
-    simInput.placeholder = "Or simulate deposit amount";
-    simInput.id = "simDepositAmount";
-    const simBtn = document.createElement("button");
-    simBtn.innerText = "Simulate Deposit";
-    simBtn.onclick = () => {
-        const amount = parseFloat(document.getElementById("simDepositAmount").value);
-        if(addManualDeposit(amount)) {
-            alert(`Deposit $${amount} simulated!`);
-            closeModals();
-        } else alert("Enter valid amount");
-    };
-    depositModalCard.insertBefore(simInput, depositModalCard.querySelector(".close-modal"));
-    depositModalCard.insertBefore(simBtn, depositModalCard.querySelector(".close-modal"));
-    */
 
     document.getElementById("confirmWithdraw").onclick = () => {
         const wallet = document.getElementById("withdrawWallet").value.trim();
         const amount = parseFloat(document.getElementById("withdrawAmount").value);
         const res = requestWithdrawal(wallet, amount);
         const msgDiv = document.getElementById("withdrawMsg");
+        
         if (res.success) {
             msgDiv.style.color = "green";
             msgDiv.innerText = res.msg;
-            setTimeout(() => { closeModals(); msgDiv.innerText = ""; }, 2000);
+            setTimeout(() => { 
+                closeModals(); 
+                msgDiv.innerText = ""; 
+            }, 2000);
             document.getElementById("withdrawWallet").value = "";
             document.getElementById("withdrawAmount").value = "";
         } else {
@@ -458,12 +474,12 @@
         if (e.target.classList.contains('modal')) closeModals();
     };
 
-    document.getElementById("logoutBtn").onclick = (e) => {
+    document.getElementById("logoutBtn").onclick = () => {
         sessionStorage.removeItem("gulab_logged_user");
-        // no redirect needed, href is index.html
+        window.location.href = "index.html";
     };
 
-    // init
+    // Initialize
     currentUser = loadCurrentUser();
     if (currentUser) {
         updateUI();
