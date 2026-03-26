@@ -133,6 +133,11 @@
             color: #2e7d32;
             background: #e0f2e0;
         }
+        
+        .info {
+            color: #2980b9;
+            background: #e3f2fd;
+        }
     </style>
 </head>
 <body>
@@ -166,18 +171,54 @@
 </div>
 
 <script>
-    // ---------- localStorage DB ----------
-    function getUsers() {
+    // Initialize database on first load
+    function initializeDatabase() {
+        // Check if users exist in localStorage
         let users = localStorage.getItem("gulab_users");
+        
         if (!users) {
-            // seed admin? no admin yet, but we can create first admin via admin panel later
+            // Create empty users array
+            const emptyUsers = [];
+            localStorage.setItem("gulab_users", JSON.stringify(emptyUsers));
+            console.log("Database initialized with empty users array");
+        }
+        
+        // Initialize redeem codes if not exists
+        let redeemCodes = localStorage.getItem("gulab_redeem_codes");
+        if (!redeemCodes) {
+            localStorage.setItem("gulab_redeem_codes", JSON.stringify([]));
+            console.log("Redeem codes database initialized");
+        }
+        
+        // Check if there are any users and set first as admin if no admin exists
+        const usersList = getUsers();
+        const hasAdmin = usersList.some(u => u.isAdmin === true);
+        
+        if (usersList.length > 0 && !hasAdmin) {
+            usersList[0].isAdmin = true;
+            saveUsers(usersList);
+            console.log("First user promoted to admin:", usersList[0].username);
+        }
+    }
+    
+    // Get all users from database
+    function getUsers() {
+        const users = localStorage.getItem("gulab_users");
+        if (!users) {
             return [];
         }
-        return JSON.parse(users);
+        try {
+            return JSON.parse(users);
+        } catch (e) {
+            console.error("Error parsing users:", e);
+            return [];
+        }
     }
 
+    // Save users to database
     function saveUsers(users) {
         localStorage.setItem("gulab_users", JSON.stringify(users));
+        console.log("Users saved successfully. Total users:", users.length);
     }
 
     // Helper: find user by username
@@ -198,32 +239,61 @@
             msgDiv.className = "message error";
             return;
         }
+        
+        if (username.length < 3) {
+            msgDiv.innerText = "❌ Username must be at least 3 characters";
+            msgDiv.className = "message error";
+            return;
+        }
+        
+        if (password.length < 4) {
+            msgDiv.innerText = "❌ Password must be at least 4 characters";
+            msgDiv.className = "message error";
+            return;
+        }
 
         let users = getUsers();
+        
+        // Check if username already exists
         if (users.find(u => u.username === username)) {
             msgDiv.innerText = "❌ Username already exists!";
             msgDiv.className = "message error";
             return;
         }
 
-        // create new user with initial balance 0
+        // Create new user with initial balance 0
         const newUser = {
+            id: Date.now(), // Unique ID
             username: username,
             password: password,
             balance: 0,
             transactions: [],
-            walletAddress: ""
+            walletAddress: "",
+            isAdmin: false, // Default not admin
+            createdAt: new Date().toISOString()
         };
+        
         users.push(newUser);
         saveUsers(users);
-        msgDiv.innerText = "✅ Account created! You can now login.";
+        
+        // If this is the first user, make them admin
+        if (users.length === 1) {
+            newUser.isAdmin = true;
+            saveUsers(users);
+            msgDiv.innerText = "✅ Account created! You are the ADMIN. You can now login.";
+        } else {
+            msgDiv.innerText = "✅ Account created successfully! You can now login.";
+        }
+        
         msgDiv.className = "message success";
         document.getElementById("reg-username").value = "";
         document.getElementById("reg-password").value = "";
-        // switch to login tab after 1 sec
+        
+        // Switch to login tab after 1.5 seconds
         setTimeout(() => {
             document.querySelector(".tab-btn[data-tab='login']").click();
-        }, 1200);
+            msgDiv.innerText = "";
+        }, 1500);
     });
 
     // Login logic
@@ -233,21 +303,39 @@
         const password = document.getElementById("login-password").value.trim();
         const msgDiv = document.getElementById("login-message");
 
-        const users = getUsers();
-        const user = users.find(u => u.username === username && u.password === password);
-        if (!user) {
-            msgDiv.innerText = "❌ Invalid credentials";
+        if (!username || !password) {
+            msgDiv.innerText = "❌ Please enter username and password";
             msgDiv.className = "message error";
             return;
         }
 
-        // store current logged in user in sessionStorage
-        sessionStorage.setItem("gulab_logged_user", JSON.stringify({ username: user.username, isAdmin: user.isAdmin || false }));
-        // redirect to hp.html
-        window.location.href = "hp.html";
+        const users = getUsers();
+        const user = users.find(u => u.username === username && u.password === password);
+        
+        if (!user) {
+            msgDiv.innerText = "❌ Invalid credentials. Please check your username and password.";
+            msgDiv.className = "message error";
+            return;
+        }
+
+        // Store current logged in user in sessionStorage
+        sessionStorage.setItem("gulab_logged_user", JSON.stringify({ 
+            username: user.username, 
+            isAdmin: user.isAdmin || false,
+            id: user.id
+        }));
+        
+        // Show success message
+        msgDiv.innerText = "✅ Login successful! Redirecting...";
+        msgDiv.className = "message success";
+        
+        // Redirect to hp.html
+        setTimeout(() => {
+            window.location.href = "hp.html";
+        }, 1000);
     });
 
-    // tab switching
+    // Tab switching
     const tabBtns = document.querySelectorAll(".tab-btn");
     const loginPanel = document.getElementById("login-panel");
     const regPanel = document.getElementById("register-panel");
@@ -261,12 +349,24 @@
             if (tabId === "login") {
                 loginPanel.classList.add("active");
                 regPanel.classList.remove("active");
+                // Clear messages
+                document.getElementById("login-message").innerText = "";
             } else {
                 regPanel.classList.add("active");
                 loginPanel.classList.remove("active");
+                document.getElementById("reg-message").innerText = "";
             }
         });
     });
+    
+    // Initialize database on page load
+    initializeDatabase();
+    
+    // Display existing users count (for debugging - can be removed)
+    const usersCount = getUsers().length;
+    if (usersCount > 0) {
+        console.log(`Database loaded with ${usersCount} existing user(s)`);
+    }
 </script>
 </body>
 </html>
