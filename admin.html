@@ -82,9 +82,6 @@
         .status {
             font-size: 13px;
         }
-        .warning {
-            color: #c0392b;
-        }
         .admin-only {
             background: #fef5e7;
             padding: 12px;
@@ -92,14 +89,23 @@
             margin-bottom: 20px;
             text-align: center;
         }
+        .stats {
+            background: #e8f5e9;
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
 <div class="admin-container">
-    <h1>🛡️ Gulab Wallet - Admin</h1>
+    <h1>🛡️ Gulab Wallet - Admin Panel</h1>
     <div class="admin-only" id="adminAuthMsg">🔐 Verifying admin rights...</div>
 
     <div id="adminContent" style="display: none;">
+        <div class="stats" id="statsArea"></div>
+        
         <div class="form-group">
             <label>💰 Dollar Value of Redeem Code</label>
             <input type="number" id="codeValue" placeholder="e.g., 10, 25, 50" step="0.01">
@@ -119,13 +125,9 @@
 </div>
 
 <script>
-    // admin check: only if logged user has isAdmin flag
+    // Database functions
     function getUsers() {
         return JSON.parse(localStorage.getItem("gulab_users") || "[]");
-    }
-
-    function saveUsers(users) {
-        localStorage.setItem("gulab_users", JSON.stringify(users));
     }
 
     function getRedeemCodes() {
@@ -162,18 +164,33 @@
         });
     }
 
-    // create redeem code
+    function updateStats() {
+        const users = getUsers();
+        const codes = getRedeemCodes();
+        const activeCodes = codes.filter(c => !c.used).length;
+        const totalUsers = users.length;
+        const totalBalance = users.reduce((sum, user) => sum + (user.balance || 0), 0);
+        
+        document.getElementById("statsArea").innerHTML = `
+            📊 <strong>System Stats:</strong> ${totalUsers} Users | Total Balance: $${totalBalance.toFixed(2)} | Active Codes: ${activeCodes}
+        `;
+    }
+
+    // Create redeem code
     function createRedeemCode(dollarValue, customCode = null) {
         if (isNaN(dollarValue) || dollarValue <= 0) {
             alert("Please enter a valid dollar amount > 0");
             return false;
         }
+        
         let code = customCode && customCode.trim() !== "" ? customCode.trim().toUpperCase() : generateRandomCode();
         const existingCodes = getRedeemCodes();
+        
         if (existingCodes.find(c => c.code === code)) {
             alert("Code already exists! Try different or leave blank for random.");
             return false;
         }
+        
         const newCode = {
             code: code,
             value: parseFloat(dollarValue),
@@ -181,53 +198,50 @@
             createdAt: new Date().toISOString(),
             redeemedAt: null
         };
+        
         existingCodes.push(newCode);
         saveRedeemCodes(existingCodes);
         renderCodeList();
+        updateStats();
         return true;
     }
 
-    // admin authentication
+    // Admin authentication
     function checkAdmin() {
         const stored = sessionStorage.getItem("gulab_logged_user");
         if (!stored) {
-            document.getElementById("adminAuthMsg").innerHTML = "❌ You are not logged in. <a href='index.html'>Login first</a>";
+            document.getElementById("adminAuthMsg").innerHTML = "❌ You are not logged in. <a href='index.html' style='color: #f4b942;'>Login first</a>";
             return false;
         }
-        const userData = JSON.parse(stored);
-        const users = getUsers();
-        const fullUser = users.find(u => u.username === userData.username);
-        if (!fullUser || fullUser.isAdmin !== true) {
-            document.getElementById("adminAuthMsg").innerHTML = "⛔ Access denied. Admin privileges required. <a href='hp.html'>Back to Dashboard</a>";
+        
+        try {
+            const userData = JSON.parse(stored);
+            const users = getUsers();
+            const fullUser = users.find(u => u.username === userData.username);
+            
+            if (!fullUser || fullUser.isAdmin !== true) {
+                document.getElementById("adminAuthMsg").innerHTML = "⛔ Access denied. Admin privileges required. <a href='hp.html' style='color: #f4b942;'>Back to Dashboard</a>";
+                return false;
+            }
+            
+            document.getElementById("adminAuthMsg").innerHTML = "✅ Welcome, Admin. You can create redeem codes.";
+            document.getElementById("adminContent").style.display = "block";
+            renderCodeList();
+            updateStats();
+            return true;
+        } catch (e) {
+            console.error("Admin check error:", e);
+            document.getElementById("adminAuthMsg").innerHTML = "❌ Error verifying admin status.";
             return false;
-        }
-        // promote if needed: set flag in session? but we keep.
-        document.getElementById("adminAuthMsg").innerHTML = "✅ Welcome, Admin. You can create redeem codes.";
-        document.getElementById("adminContent").style.display = "block";
-        renderCodeList();
-        return true;
-    }
-
-    // make first admin if none exists (optional: if no admin, first user can become admin but we allow via manual trigger)
-    function ensureAtLeastOneAdmin() {
-        let users = getUsers();
-        const anyAdmin = users.some(u => u.isAdmin === true);
-        if (!anyAdmin && users.length > 0) {
-            // set first user as admin for convenience (optional)
-            users[0].isAdmin = true;
-            saveUsers(users);
-            console.log("First user promoted to admin.");
-        } else if (users.length === 0) {
-            // if no users, we can't auto promote but you can register first and then admin will be set later.
         }
     }
 
-    // event handlers
+    // Event handlers
     document.getElementById("createCodeBtn").onclick = () => {
         const value = parseFloat(document.getElementById("codeValue").value);
         const custom = document.getElementById("customCode").value;
         if (createRedeemCode(value, custom)) {
-            alert("Redeem code created!");
+            alert("Redeem code created successfully!");
             document.getElementById("codeValue").value = "";
             document.getElementById("customCode").value = "";
         }
@@ -235,9 +249,10 @@
 
     document.getElementById("refreshListBtn").onclick = () => {
         renderCodeList();
+        updateStats();
     };
 
-    ensureAtLeastOneAdmin();
+    // Initialize
     checkAdmin();
 </script>
 </body>
